@@ -5,12 +5,14 @@ import type { Note, Block, TagEntry, TagVariant } from "@/types";
 import { PixelIcon } from "@/components/icons/PixelIcons";
 import * as storage from "@/lib/storage";
 import dynamic from "next/dynamic";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const ExcalidrawCanvas = dynamic(
   () => import("@/components/canvas/ExcalidrawCanvas"),
   { ssr: false, loading: () => (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#111111", color: "#555", fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13 }}>
-      loading canvas…
+      carregando canvas…
     </div>
   )}
 );
@@ -413,6 +415,129 @@ function HelpModal({ mode, onClose }: { mode: "light" | "dark"; onClose: () => v
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Markdown code block (used by MarkdownRenderer) ───────────────────
+function MarkdownCodeBlock({ lang, mode, children }: { lang: string; mode: "light" | "dark"; children: string }) {
+  return (
+    <div style={{
+      background: DARK_CODE.canvas, border: `1px solid ${DARK_CODE.rule}`,
+      borderRadius: 10, overflow: "hidden", margin: "12px 0",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "7px 12px", borderBottom: `1px solid ${DARK_CODE.rule}`,
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        fontSize: 10, color: DARK_CODE.inkDim, letterSpacing: "0.06em",
+      }}>
+        <PixelIcon name="terminal" size={14} color={RED} />
+        <span style={{ flex: 1 }}>{lang || "txt"}</span>
+        <button
+          onClick={() => navigator.clipboard.writeText(children)}
+          style={{
+            background: "transparent", color: DARK_CODE.inkDim,
+            border: `1px solid ${DARK_CODE.rule}`, borderRadius: 4,
+            padding: "1px 7px", fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+            fontSize: 9, cursor: "pointer",
+          }}
+        >
+          COPY
+        </button>
+      </div>
+      <pre style={{
+        margin: 0, padding: "12px 14px",
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        fontSize: 13, lineHeight: 1.7, color: DARK_CODE.ink, whiteSpace: "pre-wrap",
+      }}>
+        {children}
+      </pre>
+    </div>
+  );
+}
+
+// ── Markdown renderer (reading mode) ─────────────────────────────────
+function MarkdownRenderer({ content, mode, onLink }: { content: string; mode: "light" | "dark"; onLink: (title: string) => void }) {
+  const c = mode === "dark" ? DARK_TOKENS : LIGHT;
+  // Convert [[title]] → custom URL scheme readable by react-markdown
+  const processed = content.replace(/\[\[([^\]]+)\]\]/g, (_, t) => `[${t}](tracelog://${encodeURIComponent(t)})`);
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => (
+          <h1 style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 34, fontWeight: 500, letterSpacing: "-0.03em", color: c.ink, margin: "20px 0 10px" }}>{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 24, fontWeight: 500, letterSpacing: "-0.02em", color: c.ink, margin: "18px 0 8px" }}>{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 20, fontWeight: 500, color: c.ink, margin: "14px 0 6px" }}>{children}</h3>
+        ),
+        p: ({ children }) => (
+          <p style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 16, lineHeight: 1.65, color: c.ink, margin: "0 0 14px" }}>{children}</p>
+        ),
+        strong: ({ children }) => <strong style={{ fontWeight: 600, color: c.ink }}>{children}</strong>,
+        em: ({ children }) => <em style={{ fontStyle: "italic", color: c.inkDim }}>{children}</em>,
+        ul: ({ children }) => (
+          <ul style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 15, lineHeight: 1.65, color: c.ink, paddingLeft: 24, margin: "0 0 14px" }}>{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 15, lineHeight: 1.65, color: c.ink, paddingLeft: 24, margin: "0 0 14px" }}>{children}</ol>
+        ),
+        li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+        blockquote: ({ children }) => (
+          <blockquote style={{
+            borderLeft: `3px solid ${c.rule}`, paddingLeft: 16,
+            color: c.inkDim, margin: "14px 0", fontStyle: "italic",
+            fontFamily: '"Newsreader", Georgia, serif', fontSize: 16,
+          }}>{children}</blockquote>
+        ),
+        hr: () => <hr style={{ border: "none", borderTop: `1px solid ${c.rule}`, margin: "24px 0" }} />,
+        pre: ({ children }) => <>{children}</>, // let code handle the block
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        code: ({ className, children }: any) => {
+          const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
+          if (lang || (className ?? "").startsWith("language-")) {
+            return (
+              <MarkdownCodeBlock lang={lang || "txt"} mode={mode}>
+                {String(children).replace(/\n$/, "")}
+              </MarkdownCodeBlock>
+            );
+          }
+          return (
+            <code style={{
+              fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+              fontSize: 13,
+              background: mode === "light" ? RED_SOFT : RED_SOFT_DARK,
+              color: RED, padding: "1px 6px", borderRadius: 4,
+            }}>{children}</code>
+          );
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        a: ({ href, children }: any) => {
+          if (href?.startsWith("tracelog://")) {
+            const title = decodeURIComponent(href.replace("tracelog://", ""));
+            return (
+              <span
+                onClick={() => onLink(title)}
+                style={{ color: RED, borderBottom: `1px dotted ${RED}`, cursor: "pointer" }}
+              >
+                [[{children}]]
+              </span>
+            );
+          }
+          return (
+            <a href={href} target="_blank" rel="noopener noreferrer"
+              style={{ color: RED, textDecoration: "underline" }}>
+              {children}
+            </a>
+          );
+        },
+      }}
+    >
+      {processed}
+    </ReactMarkdown>
   );
 }
 
@@ -880,7 +1005,7 @@ export function NoteEditor({
           border: `1px solid ${c.rule}`,
           borderRadius: 8, padding: 2,
         }}>
-          {([["pencil", "editor"], ["graph", "graph"], ["columns", "canvas"]] as [string, "editor" | "graph" | "canvas"][]).map(([icon, v]) => (
+          {([["pencil", "editor", "editor"], ["graph", "graph", "grafo"], ["columns", "canvas", "canvas"]] as [string, "editor" | "graph" | "canvas", string][]).map(([icon, v, label]) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -896,7 +1021,7 @@ export function NoteEditor({
               }}
             >
               <PixelIcon name={icon} size={14} color={view === v ? RED : c.inkDim} />
-              <span>{v}</span>
+              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -959,7 +1084,7 @@ export function NoteEditor({
           }}
         >
           <PixelIcon name="sparkle" size={14} color="#FFFCF4" />
-          ask
+          perguntar
         </button>
       </div>
 
@@ -972,7 +1097,7 @@ export function NoteEditor({
               type="text"
               value={note.title}
               onChange={(e) => onUpdate({ title: e.target.value })}
-              placeholder="Untitled"
+              placeholder="Sem título"
               style={{
                 width: "100%",
                 fontFamily: '"Newsreader", Georgia, serif',
@@ -1071,7 +1196,7 @@ export function NoteEditor({
                     fontSize: 11, color: c.inkDim,
                   }}
                 >
-                  delete
+                  excluir
                 </button>
               </span>
             </div>
@@ -1163,16 +1288,16 @@ export function NoteEditor({
             ) : (
               <div
                 onClick={() => { setEditingContent(true); requestAnimationFrame(() => textareaRef.current?.focus()); }}
-                style={{
-                  minHeight: "60vh", cursor: "text",
-                  fontFamily: '"Newsreader", Georgia, serif',
-                  fontSize: 16, lineHeight: 1.65, color: c.ink,
-                  whiteSpace: "pre-wrap",
-                }}
+                style={{ minHeight: "60vh", cursor: "text" }}
               >
-                {localContent || (
-                  <span style={{ color: c.inkFaint, fontStyle: "italic" }}>
-                    Click to start writing…
+                {localContent ? (
+                  <MarkdownRenderer content={localContent} mode={mode} onLink={onLinkNavigate} />
+                ) : (
+                  <span style={{
+                    color: c.inkFaint, fontStyle: "italic",
+                    fontFamily: '"Newsreader", Georgia, serif', fontSize: 16,
+                  }}>
+                    Clique para começar a escrever…
                   </span>
                 )}
               </div>

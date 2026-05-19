@@ -68,7 +68,7 @@ export default function Home() {
 
   function deleteNote() {
     if (!activeNote) return;
-    if (!confirm("Delete this note?")) return;
+    if (!confirm("Excluir esta nota?")) return;
     storage.deleteNote(activeNote.id);
     const all = storage.getAllNotes();
     setNotes(all);
@@ -148,7 +148,7 @@ export default function Home() {
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
           fontSize: 14,
         }}>
-          select a note
+          selecione uma nota
         </div>
       )}
 

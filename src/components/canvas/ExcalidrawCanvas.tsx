@@ -55,7 +55,7 @@ function CanvasLoading({ mode = "dark" }: { mode?: "light" | "dark" }) {
       gap: 10, height: "100%",
     }}>
       <PixelIcon name="sparkle" size={14} color={t.inkFaint} />
-      loading canvas…
+      carregando canvas…
     </div>
   );
 }
@@ -74,7 +74,44 @@ function SaveIndicator({ state }: { state: "idle" | "saving" | "saved" }) {
         background: state === "saving" ? "#BC8438" : "#6E8462",
         animation: state === "saving" ? "tl-pulse 1s ease-in-out infinite" : "none",
       }} />
-      {state === "saving" ? "saving…" : "saved"}
+      {state === "saving" ? "salvando…" : "salvo"}
+    </div>
+  );
+}
+
+function ImportToast({
+  state, mode,
+}: { state: "idle" | "importing" | "success" | "error"; mode: "light" | "dark" }) {
+  if (state === "idle") return null;
+  const t = DS[mode];
+  const dotColor = state === "importing" ? "#BC8438" : state === "success" ? "#6E8462" : "#DB4842";
+  const label = state === "importing" ? "importando…"
+    : state === "success" ? "arquivo importado"
+    : "formato não suportado";
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 24, left: "50%",
+      transform: "translateX(-50%)",
+      background: t.surface,
+      border: `1px solid ${t.rule}`,
+      borderRadius: 8,
+      padding: "8px 16px",
+      fontFamily: '"IBM Plex Sans", sans-serif',
+      fontSize: 12, color: t.ink,
+      boxShadow: mode === "dark"
+        ? "0 4px 16px rgba(0,0,0,0.4)"
+        : "0 4px 16px rgba(26,24,20,0.1)",
+      zIndex: 100,
+      display: "flex", alignItems: "center", gap: 8,
+      pointerEvents: "none",
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+        background: dotColor,
+        animation: state === "importing" ? "tl-pulse 1s ease-in-out infinite" : "none",
+      }} />
+      {label}
     </div>
   );
 }
@@ -84,9 +121,11 @@ export default function ExcalidrawCanvas({
 }: ExcalidrawCanvasProps) {
   const apiRef = useRef<AnyAPI>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [importState, setImportState] = useState<"idle" | "importing" | "success" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<Record<string, unknown> | null>(null);
   const savedRef = useRef(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const t = DS[mode];
 
@@ -140,6 +179,96 @@ export default function ExcalidrawCanvas({
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
   }
 
+  // Import handler — supports .excalidraw (merge) and images (insert at viewport center)
+  const handleImport = useCallback(async (file: File) => {
+    if (!apiRef.current) return;
+    setImportState("importing");
+
+    const finish = (s: "success" | "error") => {
+      setImportState(s);
+      setTimeout(() => setImportState("idle"), 2000);
+    };
+
+    try {
+      if (file.name.endsWith(".excalidraw")) {
+        // Dynamic import avoids loading Excalidraw utils during SSR
+        const { loadFromBlob } = await import("@excalidraw/excalidraw");
+        const blob = new Blob([await file.text()], { type: "application/json" });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const scene = await (loadFromBlob as any)(blob, null, null);
+        const current = apiRef.current.getSceneElements();
+        apiRef.current.updateScene({
+          elements: [...current, ...(scene.elements ?? [])],
+        });
+        if (scene.files && Object.keys(scene.files).length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          apiRef.current.addFiles(Object.values(scene.files) as any[]);
+        }
+        finish("success");
+
+      } else if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const api = apiRef.current;
+          if (!api || !e.target?.result) { finish("error"); return; }
+
+          const dataURL = e.target.result as string;
+          const fileId = Math.random().toString(36).slice(2, 12);
+
+          // Measure natural image dimensions for correct aspect ratio
+          const img = new Image();
+          img.onload = () => {
+            const MAX_W = 600;
+            const natW = img.naturalWidth || 400;
+            const natH = img.naturalHeight || 300;
+            const w = Math.min(natW, MAX_W);
+            const h = natH * (w / natW);
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            api.addFiles([{ id: fileId, dataURL, mimeType: file.type, created: Date.now() } as any]);
+
+            const appState = api.getAppState();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const zv: number = (appState.zoom as any)?.value ?? 1;
+            const cx = -appState.scrollX + (window.innerWidth / 2 - w / 2) / zv;
+            const cy = -appState.scrollY + (window.innerHeight / 2 - h / 2) / zv;
+
+            api.updateScene({
+              elements: [
+                ...api.getSceneElements(),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                {
+                  type: "image", id: Math.random().toString(36).slice(2, 12),
+                  x: cx, y: cy, width: w, height: h,
+                  angle: 0, strokeColor: "transparent", backgroundColor: "transparent",
+                  fillStyle: "hachure", strokeWidth: 1, strokeStyle: "solid",
+                  roughness: 1, opacity: 100, groupIds: [], frameId: null,
+                  roundness: null,
+                  seed: Math.floor(Math.random() * 1e6),
+                  version: 1, versionNonce: Math.floor(Math.random() * 1e6),
+                  isDeleted: false, boundElements: null, updated: Date.now(),
+                  link: null, locked: false, status: "saved",
+                  fileId, scale: [1, 1] as [number, number],
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                } as any,
+              ],
+            });
+            finish("success");
+          };
+          img.onerror = () => finish("error");
+          img.src = dataURL;
+        };
+        reader.onerror = () => finish("error");
+        reader.readAsDataURL(file);
+
+      } else {
+        finish("error");
+      }
+    } catch {
+      finish("error");
+    }
+  }, []);
+
   // useCallback prevents recreation on every render — avoids onChange loops
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = useCallback((elements: any, appState: any, files: any) => {
@@ -191,12 +320,12 @@ export default function ExcalidrawCanvas({
         flexShrink: 0, zIndex: 10,
       }}>
 
-        {/* Back — icon rotated manually */}
+        {/* Back */}
         <Button variant="secondary" mode={mode} mini onClick={onBack}>
           <span style={{ display: "inline-block", transform: "rotate(180deg)", lineHeight: 0 }}>
             <PixelIcon name="arrowRight" size={14} color="currentColor" />
           </span>
-          back to note
+          voltar à nota
         </Button>
 
         {/* Note name */}
@@ -206,7 +335,7 @@ export default function ExcalidrawCanvas({
             fontSize: 16, letterSpacing: "-0.01em", color: t.ink,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            {noteTitle || "Untitled"}
+            {noteTitle || "Sem título"}
           </span>
           <Badge variant="neutral" mode={mode}>canvas</Badge>
         </div>
@@ -214,9 +343,34 @@ export default function ExcalidrawCanvas({
         {/* Save indicator */}
         <SaveIndicator state={saveState} />
 
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".excalidraw,.png,.jpg,.jpeg,.svg"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImport(file);
+            e.target.value = ""; // reset so the same file can be re-imported
+          }}
+        />
+
+        {/* Import button */}
+        <Button
+          variant="secondary"
+          mode={mode}
+          mini
+          icon="upload"
+          disabled={importState === "importing"}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          importar
+        </Button>
+
         {/* Save now */}
         <Button variant="primary" mode={mode} mini icon="check" onClick={handleSaveNow}>
-          save
+          salvar
         </Button>
       </div>
 
@@ -246,6 +400,9 @@ export default function ExcalidrawCanvas({
           }}
         />
       </div>
+
+      {/* Import toast */}
+      <ImportToast state={importState} mode={mode} />
 
     </div>
   );

@@ -42,7 +42,7 @@ function dotColor(dot: string, inkFaint: string): string {
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "now";
+  if (m < 1) return "agora";
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
@@ -113,7 +113,7 @@ export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter,
           margin: 0,
           color: c.ink,
         }}>
-          all notes
+          todas as notas
         </h2>
         <span style={{
           fontFamily: '"JetBrains Mono", ui-monospace, monospace',
@@ -151,7 +151,7 @@ export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter,
       <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 14px" }}>
         {filtered.length === 0 ? (
           <p style={{ color: c.inkFaint, fontSize: 13, padding: "16px 4px", fontStyle: "italic" }}>
-            No notes found
+            Nenhuma nota encontrada
           </p>
         ) : layoutMode === "grid" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -203,7 +203,7 @@ export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter,
                     whiteSpace: "nowrap",
                     marginBottom: 6,
                   }}>
-                    {note.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Untitled</span>}
+                    {note.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Sem título</span>}
                   </div>
 
                   {/* Tags */}
@@ -268,7 +268,7 @@ export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter,
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}>
-                      {note.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Untitled</span>}
+                      {note.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Sem título</span>}
                     </div>
                     <div style={{
                       fontFamily: '"JetBrains Mono", ui-monospace, monospace',

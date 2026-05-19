@@ -127,7 +127,7 @@ export function Sidebar({
           <input
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="find note or command…"
+            placeholder="buscar nota ou comando…"
             style={{
               flex: 1,
               border: "none",
@@ -248,7 +248,7 @@ export function Sidebar({
                   >
                     <PixelIcon name="note" size={14} color={active ? c.ink : c.inkFaint} />
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {n.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Untitled</span>}
+                      {n.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Sem título</span>}
                     </span>
                   </button>
                 );
@@ -259,7 +259,7 @@ export function Sidebar({
 
         {notes.length === 0 && (
           <p style={{ fontSize: 12, color: c.inkFaint, padding: "8px 10px", fontStyle: "italic" }}>
-            No notes yet
+            Nenhuma nota ainda
           </p>
         )}
       </div>

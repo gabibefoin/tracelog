@@ -44,6 +44,7 @@ const ICON_MAP: Record<string, React.ComponentType<LucideProps>> = {
   columns:       Columns2,
   chevronUpDown: ChevronsUpDown,
   help:          HelpCircle,
+  upload:        Upload,
 };
 
 export function PixelIcon({
