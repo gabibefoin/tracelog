@@ -419,7 +419,7 @@ function HelpModal({ mode, onClose }: { mode: "light" | "dark"; onClose: () => v
 }
 
 // ── Markdown code block (used by MarkdownRenderer) ───────────────────
-function MarkdownCodeBlock({ lang, mode, children }: { lang: string; mode: "light" | "dark"; children: string }) {
+function MarkdownCodeBlock({ lang, children }: { lang: string; children: string }) {
   return (
     <div style={{
       background: DARK_CODE.canvas, border: `1px solid ${DARK_CODE.rule}`,
@@ -500,7 +500,7 @@ function MarkdownRenderer({ content, mode, onLink }: { content: string; mode: "l
           const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
           if (lang || (className ?? "").startsWith("language-")) {
             return (
-              <MarkdownCodeBlock lang={lang || "txt"} mode={mode}>
+              <MarkdownCodeBlock lang={lang || "txt"}>
                 {String(children).replace(/\n$/, "")}
               </MarkdownCodeBlock>
             );
