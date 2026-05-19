@@ -137,6 +137,8 @@ export default function Home() {
           onLinkNavigate={handleLinkNavigate}
           onOpenAI={() => setAiOpen(true)}
           onToggleTheme={() => setMode((m) => m === "light" ? "dark" : "light")}
+          onSelectNote={selectNote}
+          onFilterByFolder={(folder) => handleSearch(folder)}
         />
       ) : (
         <div style={{

@@ -218,6 +218,7 @@ export function searchNotes(query: string): Note[] {
       n.title.toLowerCase().includes(q) ||
       n.content.toLowerCase().includes(q) ||
       n.excerpt.toLowerCase().includes(q) ||
+      n.folder.toLowerCase().includes(q) ||
       n.tags.some(([, label]) => label.toLowerCase().includes(q))
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { Note, Block, TagEntry } from "@/types";
+import type { Note, Block, TagEntry, TagVariant } from "@/types";
 import { PixelIcon } from "@/components/icons/PixelIcons";
+import * as storage from "@/lib/storage";
 import dynamic from "next/dynamic";
 
 const ExcalidrawCanvas = dynamic(
@@ -23,6 +24,8 @@ interface NoteEditorProps {
   onLinkNavigate: (title: string) => void;
   onOpenAI: () => void;
   onToggleTheme: () => void;
+  onSelectNote?: (id: string) => void;
+  onFilterByFolder?: (folder: string) => void;
 }
 
 const LIGHT = {
@@ -41,9 +44,11 @@ const RED_SOFT = "#F4D8D6";
 const RED_SOFT_DARK = "#3A2220";
 const SIGNAL_TINT = "#F1E1C8";
 const SIGNAL = "#BC8438";
+
+// DS-compliant tag styles — no teal/purple (scope: warm sage, recon: warm stone)
 const TAG_STYLES: Record<string, { bg: string; fg: string; bd: string }> = {
-  scope:   { bg: "#DCE7E8", fg: "#4D7C84", bd: "#4D7C84" },
-  recon:   { bg: "#E4E1EC", fg: "#6E6B96", bd: "#6E6B96" },
+  scope:   { bg: "#DDE4D8", fg: "#5A7A5C", bd: "#5A7A5C" },
+  recon:   { bg: "#E8E1D4", fg: "#7A6B50", bd: "#A29B8C" },
   patched: { bg: "#DFE5D8", fg: "#6E8462", bd: "#6E8462" },
   signal:  { bg: SIGNAL_TINT, fg: SIGNAL, bd: SIGNAL },
   vuln:    { bg: RED, fg: "#FFFCF4", bd: RED },
@@ -66,6 +71,7 @@ const SLASH_COMMANDS = [
 ] as const;
 type SlashCmd = typeof SLASH_COMMANDS[number];
 
+// ── Slash menu ────────────────────────────────────────────────────────
 function SlashMenu({
   commands, selectedIndex, onSelect, pos, mode,
 }: {
@@ -84,15 +90,15 @@ function SlashMenu({
       left: pos.left,
       width: 272,
       maxHeight: 320,
-      overflowY: "auto",
+      overflow: "hidden",   // clip for border-radius
+      overflowY: "auto",    // must come AFTER overflow so it wins
       background: mode === "dark" ? "#26241F" : "#FBF8EF",
       border: `1px solid ${c.rule}`,
       borderRadius: 10,
       boxShadow: mode === "dark"
         ? "0 8px 32px rgba(0,0,0,0.5)"
         : "0 4px 20px rgba(26,24,20,0.12)",
-      zIndex: 200,
-      overflow: "hidden",
+      zIndex: 9999,
     }}>
       <div style={{
         padding: "5px 12px",
@@ -141,6 +147,271 @@ function SlashMenu({
           </div>
         </button>
       ))}
+    </div>
+  );
+}
+
+// ── Wikilink picker ───────────────────────────────────────────────────
+function WikilinkMenu({
+  notes, query, selectedIndex, onSelect, pos, mode,
+}: {
+  notes: Note[];
+  query: string;
+  selectedIndex: number;
+  onSelect: (title: string) => void;
+  pos: { top: number; left: number };
+  mode: "light" | "dark";
+}) {
+  const c = mode === "dark" ? DARK_TOKENS : LIGHT;
+  const filtered = notes
+    .filter(n => n.title.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 8);
+  if (filtered.length === 0) return null;
+  return (
+    <div style={{
+      position: "fixed",
+      top: pos.top,
+      left: pos.left,
+      width: 240,
+      maxHeight: 280,
+      overflow: "hidden",
+      overflowY: "auto",
+      background: mode === "dark" ? "#26241F" : "#FBF8EF",
+      border: `1px solid ${c.rule}`,
+      borderRadius: 10,
+      boxShadow: mode === "dark"
+        ? "0 8px 32px rgba(0,0,0,0.5)"
+        : "0 4px 20px rgba(26,24,20,0.12)",
+      zIndex: 9999,
+    }}>
+      <div style={{
+        padding: "5px 12px",
+        borderBottom: `1px solid ${c.rule}`,
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: 9, color: c.inkFaint,
+        letterSpacing: "0.12em", textTransform: "uppercase",
+      }}>
+        linkar nota
+      </div>
+      {filtered.map((note, i) => (
+        <button
+          key={note.id}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(note.title); }}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 12px",
+            background: i === selectedIndex
+              ? (mode === "dark" ? "#2E2B25" : "#F4F1E8")
+              : "transparent",
+            border: "none",
+            borderBottom: i < filtered.length - 1 ? `1px solid ${c.ruleSoft}` : "none",
+            cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <PixelIcon name="note" size={13} color={RED} />
+          <span style={{
+            fontFamily: '"IBM Plex Sans", sans-serif',
+            fontSize: 13, fontWeight: 500, color: c.ink,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {note.title || "Untitled"}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Settings modal ────────────────────────────────────────────────────
+function SettingsModal({ mode, onClose }: { mode: "light" | "dark"; onClose: () => void }) {
+  const c = mode === "dark" ? DARK_TOKENS : LIGHT;
+  function handleClearData() {
+    if (confirm("Apagar todos os dados? Essa ação não pode ser desfeita.")) {
+      localStorage.removeItem("tracelog_notes");
+      window.location.reload();
+    }
+  }
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.45)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: mode === "dark" ? "#26241F" : "#FBF8EF",
+          border: `1px solid ${c.rule}`,
+          borderRadius: 16, padding: 28, width: 380,
+          boxShadow: mode === "dark"
+            ? "0 24px 64px rgba(0,0,0,0.6)"
+            : "0 12px 40px rgba(26,24,20,0.15)",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{
+          fontFamily: '"Newsreader", Georgia, serif',
+          fontSize: 22, fontWeight: 500, color: c.ink, marginBottom: 20,
+        }}>
+          Configurações
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div>
+            <div style={{
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontSize: 11, fontWeight: 600, color: c.inkFaint,
+              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10,
+            }}>
+              Armazenamento
+            </div>
+            <p style={{
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontSize: 13, color: c.inkDim, lineHeight: 1.5, margin: "0 0 12px",
+            }}>
+              Todas as notas são salvas localmente no seu navegador via localStorage.
+            </p>
+            <button
+              onClick={handleClearData}
+              style={{
+                padding: "8px 16px", borderRadius: 8,
+                background: "transparent", border: `1px solid ${RED}`,
+                color: RED, cursor: "pointer",
+                fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13,
+              }}
+            >
+              Apagar todos os dados
+            </button>
+          </div>
+
+          <div>
+            <div style={{
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontSize: 11, fontWeight: 600, color: c.inkFaint,
+              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10,
+            }}>
+              IA
+            </div>
+            <p style={{
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontSize: 13, color: c.inkDim, lineHeight: 1.5, margin: 0,
+            }}>
+              Configure <code style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}>ANTHROPIC_API_KEY</code> no arquivo <code style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}>.env.local</code> para ativar o painel de IA.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 20px", borderRadius: 8,
+              background: RED, border: "none",
+              color: "#FFFCF4", cursor: "pointer",
+              fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13, fontWeight: 500,
+            }}
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Help modal ────────────────────────────────────────────────────────
+function HelpModal({ mode, onClose }: { mode: "light" | "dark"; onClose: () => void }) {
+  const c = mode === "dark" ? DARK_TOKENS : LIGHT;
+  const shortcuts = [
+    { key: "⌘K", desc: "Buscar notas" },
+    { key: "⌘J", desc: "Abrir painel AI" },
+    { key: "/", desc: "Inserir bloco (no editor)" },
+    { key: "[[", desc: "Linkar nota (no editor)" },
+    { key: "↑ ↓", desc: "Navegar no menu" },
+    { key: "Enter", desc: "Confirmar seleção" },
+    { key: "Esc", desc: "Cancelar / fechar" },
+  ];
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.45)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: mode === "dark" ? "#26241F" : "#FBF8EF",
+          border: `1px solid ${c.rule}`,
+          borderRadius: 16, padding: 28, width: 400,
+          boxShadow: mode === "dark"
+            ? "0 24px 64px rgba(0,0,0,0.6)"
+            : "0 12px 40px rgba(26,24,20,0.15)",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{
+          fontFamily: '"Newsreader", Georgia, serif',
+          fontSize: 22, fontWeight: 500, color: c.ink, marginBottom: 20,
+        }}>
+          Ajuda
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontFamily: '"IBM Plex Sans", sans-serif',
+            fontSize: 11, fontWeight: 600, color: c.inkFaint,
+            letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12,
+          }}>
+            Atalhos de teclado
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {shortcuts.map(({ key, desc }) => (
+              <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13, color: c.ink }}>
+                  {desc}
+                </span>
+                <span style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 11, color: c.inkFaint,
+                  background: c.raised, border: `1px solid ${c.rule}`,
+                  padding: "2px 7px", borderRadius: 5,
+                }}>
+                  {key}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{
+          padding: "12px 0",
+          borderTop: `1px solid ${c.rule}`,
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 10.5, color: c.inkFaint,
+          display: "flex", justifyContent: "space-between",
+        }}>
+          <span>tracelog v0.1.0</span>
+          <span>notas pra offsec</span>
+        </div>
+
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 20px", borderRadius: 8,
+              background: RED, border: "none",
+              color: "#FFFCF4", cursor: "pointer",
+              fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13, fontWeight: 500,
+            }}
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -324,11 +595,18 @@ function Body({ blocks, mode, onLink }: { blocks: Block[]; mode: "light" | "dark
 
 // ── Graph view ────────────────────────────────────────────────────────
 const DOT_COLORS: Record<string, string> = {
-  red: RED, signal: SIGNAL, recon: "#6E6B96", scope: "#4D7C84", patched: "#6E8462",
+  red: RED, signal: SIGNAL, recon: "#6E8462", scope: "#5A7A5C", patched: "#6E8462",
 };
 function dotColor(dot: string, inkFaint: string) { return DOT_COLORS[dot] ?? inkFaint; }
 
-function GraphView({ notes, focusId, mode }: { notes: Note[]; focusId: string; mode: "light" | "dark" }) {
+function GraphView({
+  notes, focusId, mode, onSelectNote,
+}: {
+  notes: Note[];
+  focusId: string;
+  mode: "light" | "dark";
+  onSelectNote?: (id: string) => void;
+}) {
   const c = mode === "dark" ? DARK_TOKENS : LIGHT;
   const cx = 360, cy = 280;
   const focus = notes.findIndex((n) => n.id === focusId);
@@ -360,7 +638,11 @@ function GraphView({ notes, focusId, mode }: { notes: Note[]; focusId: string; m
           />
         ))}
         {nodes.map((n, i) => (
-          <g key={i}>
+          <g
+            key={i}
+            style={{ cursor: (!n.big && onSelectNote) ? "pointer" : "default" }}
+            onClick={() => { if (!n.big && onSelectNote) onSelectNote(n.id); }}
+          >
             {n.big && (
               <circle cx={n.x} cy={n.y} r={n.r + 12}
                 fill="none" stroke={RED} strokeOpacity="0.3" />
@@ -425,7 +707,10 @@ function TagPill({ variant, label, onRemove }: { variant: string; label: string;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────
-export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNavigate, onOpenAI, onToggleTheme }: NoteEditorProps) {
+export function NoteEditor({
+  note, notes, mode, onUpdate, onDelete, onLinkNavigate, onOpenAI, onToggleTheme,
+  onSelectNote, onFilterByFolder,
+}: NoteEditorProps) {
   const c = mode === "dark" ? DARK_TOKENS : LIGHT;
   const [view, setView] = useState<"editor" | "graph" | "canvas">("editor");
   const [editingContent, setEditingContent] = useState(false);
@@ -433,12 +718,32 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Slash command state
   type SlashState = { query: string; start: number; selectedIndex: number } | null;
   const [slashState, setSlashState] = useState<SlashState>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
+  // Wikilink picker state
+  type WikilinkState = { query: string; start: number; selectedIndex: number } | null;
+  const [wikilinkState, setWikilinkState] = useState<WikilinkState>(null);
+  const [wikilinkPos, setWikilinkPos] = useState({ top: 0, left: 0 });
+
+  // Tag input state
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [newTagVariant, setNewTagVariant] = useState<TagVariant>("neutral");
+
+  // Modal state
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
   const noteId = note.id;
-  useEffect(() => { setLocalContent(note.content); setEditingContent(false); }, [noteId]); // eslint-disable-line
+  useEffect(() => {
+    setLocalContent(note.content);
+    setEditingContent(false);
+    setSlashState(null);
+    setWikilinkState(null);
+  }, [noteId]); // eslint-disable-line
 
   function scheduleSync(content: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -448,7 +753,7 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
   function calcMenuPos(ta: HTMLTextAreaElement, content: string, slashStart: number) {
     const textBefore = content.slice(0, slashStart);
     const lineCount = textBefore.split("\n").length;
-    const lineH = 16 * 1.65; // fontSize * lineHeight
+    const lineH = 16 * 1.65;
     const rect = ta.getBoundingClientRect();
     let top = rect.top + lineCount * lineH - ta.scrollTop + lineH;
     if (top + 340 > window.innerHeight) top -= 340 + lineH;
@@ -490,9 +795,28 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
     });
   }
 
+  function insertWikilink(noteTitle: string) {
+    setWikilinkState(null);
+    if (!textareaRef.current || wikilinkState === null) return;
+    const ta = textareaRef.current;
+    const cursor = ta.selectionStart ?? 0;
+    const before = localContent.slice(0, wikilinkState.start);
+    const after = localContent.slice(cursor);
+    const insert = `[[${noteTitle}]]`;
+    const next = before + insert + after;
+    setLocalContent(next);
+    scheduleSync(next);
+    requestAnimationFrame(() => {
+      const pos = wikilinkState.start + insert.length;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+  }
+
   const hasBlocks = note.body && note.body.length > 0;
 
   // Canvas mode takes over the full column
+  // BUG 1 fix: canvas onSave re-reads from storage to prevent any stale state from erasing tags
   if (view === "canvas") {
     return (
       <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -501,7 +825,15 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
           noteTitle={note.title}
           initialData={note.canvas_data}
           mode={mode}
-          onSave={(data) => onUpdate({ canvas_data: data })}
+          onSave={(data) => {
+            // Read fresh from storage to guarantee tags/other fields are never lost
+            const fresh = storage.getNoteById(note.id);
+            if (fresh && JSON.stringify(fresh.tags) !== JSON.stringify(note.tags)) {
+              onUpdate({ canvas_data: data, tags: fresh.tags });
+            } else {
+              onUpdate({ canvas_data: data });
+            }
+          }}
           onBack={() => setView("editor")}
         />
       </section>
@@ -518,7 +850,7 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
         borderBottom: `1px solid ${c.rule}`,
         flexShrink: 0,
       }}>
-        {/* Breadcrumb */}
+        {/* Breadcrumb — folder part clickable */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           fontFamily: '"JetBrains Mono", ui-monospace, monospace',
@@ -527,7 +859,17 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
         }}>
           <PixelIcon name="folder" size={14} color={c.inkFaint} />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {note.folder} / {note.title.toLowerCase().replace(/\s+/g, "-") || "untitled"}
+            <span
+              onClick={() => onFilterByFolder && onFilterByFolder(note.folder)}
+              style={{
+                cursor: onFilterByFolder ? "pointer" : "default",
+                borderBottom: onFilterByFolder ? `1px dotted ${c.inkFaint}` : "none",
+              }}
+            >
+              {note.folder}
+            </span>
+            {" / "}
+            <span>{note.title.toLowerCase().replace(/\s+/g, "-") || "untitled"}</span>
           </span>
         </div>
 
@@ -574,6 +916,36 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
           <PixelIcon name={mode === "light" ? "eye" : "sparkle"} size={14} color={c.ink} />
         </button>
 
+        {/* Help */}
+        <button
+          onClick={() => setShowHelp(true)}
+          title="ajuda"
+          style={{
+            width: 30, height: 30,
+            background: "transparent",
+            border: `1px solid ${c.rule}`,
+            borderRadius: 6, cursor: "pointer",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <PixelIcon name="help" size={14} color={c.ink} />
+        </button>
+
+        {/* Settings */}
+        <button
+          onClick={() => setShowSettings(true)}
+          title="configurações"
+          style={{
+            width: 30, height: 30,
+            background: "transparent",
+            border: `1px solid ${c.rule}`,
+            borderRadius: 6, cursor: "pointer",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <PixelIcon name="cog" size={14} color={c.ink} />
+        </button>
+
         {/* Ask button */}
         <button
           onClick={onOpenAI}
@@ -617,6 +989,72 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
                 <TagPill key={j} variant={v} label={t} mode={mode}
                   onRemove={() => onUpdate({ tags: note.tags.filter((_, k) => k !== j) })} />
               ))}
+
+              {/* Add tag UI */}
+              {addingTag ? (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <select
+                    value={newTagVariant}
+                    onChange={(e) => setNewTagVariant(e.target.value as TagVariant)}
+                    style={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: 10.5, border: `1px solid ${c.rule}`,
+                      background: c.surface, color: c.ink,
+                      borderRadius: 6, padding: "2px 4px", outline: "none",
+                    }}
+                  >
+                    {(["neutral", "scope", "recon", "vuln", "patched", "signal"] as TagVariant[]).map(v => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <input
+                    autoFocus
+                    value={newTagLabel}
+                    onChange={(e) => setNewTagLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTagLabel.trim()) {
+                        onUpdate({ tags: [...note.tags, [newTagVariant, newTagLabel.trim()]] });
+                        setNewTagLabel("");
+                        setAddingTag(false);
+                      }
+                      if (e.key === "Escape") {
+                        setNewTagLabel("");
+                        setAddingTag(false);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (newTagLabel.trim()) {
+                        onUpdate({ tags: [...note.tags, [newTagVariant, newTagLabel.trim()]] });
+                      }
+                      setNewTagLabel("");
+                      setAddingTag(false);
+                    }}
+                    placeholder="nome da tag"
+                    style={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: 10.5, border: `1px solid ${c.rule}`,
+                      background: "transparent", color: c.ink,
+                      borderRadius: 6, padding: "2px 8px",
+                      outline: "none", width: 120,
+                    }}
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setAddingTag(true); setNewTagVariant("neutral"); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    background: "transparent", border: `1px solid ${c.rule}`,
+                    borderRadius: 999, padding: "2px 8px",
+                    cursor: "pointer", color: c.inkFaint,
+                    fontFamily: '"JetBrains Mono", monospace', fontSize: 10.5,
+                  }}
+                >
+                  <PixelIcon name="plus" size={10} color={c.inkFaint} />
+                  tag
+                </button>
+              )}
+
               <span style={{
                 fontFamily: '"JetBrains Mono", ui-monospace, monospace',
                 fontSize: 10, color: c.inkFaint, marginLeft: 6,
@@ -640,7 +1078,57 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
 
             {/* Content: Block renderer if body[], otherwise editable textarea */}
             {hasBlocks ? (
-              <Body blocks={note.body} mode={mode} onLink={onLinkNavigate} />
+              <>
+                <Body blocks={note.body} mode={mode} onLink={onLinkNavigate} />
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${c.ruleSoft}` }}>
+                  <button
+                    onClick={() => setEditingContent(true)}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      background: "transparent", border: `1px solid ${c.rule}`,
+                      borderRadius: 6, padding: "4px 12px",
+                      cursor: "pointer", color: c.inkFaint,
+                      fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 12,
+                    }}
+                  >
+                    <PixelIcon name="pencil" size={12} color={c.inkFaint} />
+                    editar texto
+                  </button>
+                </div>
+                {editingContent && (
+                  <>
+                    <textarea
+                      ref={textareaRef}
+                      value={localContent}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const cursor = e.target.selectionStart ?? 0;
+                        setLocalContent(value);
+                        scheduleSync(value);
+                        handleInlineDetection(value, cursor);
+                      }}
+                      onKeyDown={handleKeyDown}
+                      onBlur={() => {
+                        setTimeout(() => { setSlashState(null); setWikilinkState(null); }, 150);
+                        setEditingContent(false);
+                        onUpdate({ content: localContent });
+                      }}
+                      style={{
+                        width: "100%", minHeight: "30vh", marginTop: 12,
+                        background: c.surface, border: `1px solid ${c.rule}`,
+                        borderRadius: 8, outline: "none", resize: "none",
+                        fontFamily: '"Newsreader", Georgia, serif',
+                        fontSize: 16, lineHeight: 1.65, color: c.ink,
+                        caretColor: RED, padding: "12px 14px",
+                      }}
+                      placeholder="Notas adicionais (Markdown)…"
+                      spellCheck={false}
+                      autoFocus
+                    />
+                    {renderFloatingMenus()}
+                  </>
+                )}
+              </>
             ) : editingContent ? (
               <>
                 <textarea
@@ -651,60 +1139,11 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
                     const cursor = e.target.selectionStart ?? 0;
                     setLocalContent(value);
                     scheduleSync(value);
-                    // Slash detection: / after start-of-line or whitespace
-                    const before = value.slice(0, cursor);
-                    const m = before.match(/(?:^|\s)\/(\w*)$/);
-                    if (m) {
-                      const start = before.lastIndexOf("/");
-                      const query = m[1].toLowerCase();
-                      const filtered = SLASH_COMMANDS.filter(
-                        (c) => c.cmd.startsWith(query) || c.label.toLowerCase().includes(query)
-                      );
-                      if (filtered.length > 0) {
-                        setSlashState({ query, start, selectedIndex: 0 });
-                        if (textareaRef.current) {
-                          setMenuPos(calcMenuPos(textareaRef.current, value, start));
-                        }
-                      } else {
-                        setSlashState(null);
-                      }
-                    } else {
-                      setSlashState(null);
-                    }
+                    handleInlineDetection(value, cursor);
                   }}
-                  onKeyDown={(e) => {
-                    if (slashState !== null) {
-                      const filtered = SLASH_COMMANDS.filter(
-                        (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
-                      );
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setSlashState((s) => s ? { ...s, selectedIndex: Math.min(s.selectedIndex + 1, filtered.length - 1) } : null);
-                        return;
-                      }
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setSlashState((s) => s ? { ...s, selectedIndex: Math.max(s.selectedIndex - 1, 0) } : null);
-                        return;
-                      }
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const sel = filtered[slashState.selectedIndex];
-                        if (sel) insertSlashCommand(sel.cmd);
-                        return;
-                      }
-                      if (e.key === "Escape") {
-                        setSlashState(null);
-                        return;
-                      }
-                    }
-                    if (e.key === "Escape") {
-                      setEditingContent(false);
-                      onUpdate({ content: localContent });
-                    }
-                  }}
+                  onKeyDown={handleKeyDown}
                   onBlur={() => {
-                    setTimeout(() => setSlashState(null), 150);
+                    setTimeout(() => { setSlashState(null); setWikilinkState(null); }, 150);
                     setEditingContent(false);
                     onUpdate({ content: localContent });
                   }}
@@ -719,20 +1158,7 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
                   spellCheck={false}
                   autoFocus
                 />
-                {slashState !== null && (() => {
-                  const filtered = SLASH_COMMANDS.filter(
-                    (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
-                  );
-                  return filtered.length > 0 ? (
-                    <SlashMenu
-                      commands={filtered}
-                      selectedIndex={slashState.selectedIndex}
-                      onSelect={insertSlashCommand}
-                      pos={menuPos}
-                      mode={mode}
-                    />
-                  ) : null;
-                })()}
+                {renderFloatingMenus()}
               </>
             ) : (
               <div
@@ -754,8 +1180,150 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
           </div>
         )}
 
-        {view === "graph" && <GraphView notes={notes} focusId={note.id} mode={mode} />}
+        {view === "graph" && (
+          <GraphView notes={notes} focusId={note.id} mode={mode} onSelectNote={onSelectNote} />
+        )}
       </div>
+
+      {/* Modals */}
+      {showSettings && <SettingsModal mode={mode} onClose={() => setShowSettings(false)} />}
+      {showHelp && <HelpModal mode={mode} onClose={() => setShowHelp(false)} />}
     </section>
   );
+
+  // ── Inline detection helpers (extracted so they're shared between hasBlocks and plain textarea) ──
+  function handleInlineDetection(value: string, cursor: number) {
+    const before = value.slice(0, cursor);
+
+    // Wikilink detection — takes priority over slash
+    const wlMatch = before.match(/\[\[([^\]]*)$/);
+    if (wlMatch) {
+      const start = before.lastIndexOf("[[");
+      const query = wlMatch[1];
+      const filteredNotes = notes.filter(n => n.title.toLowerCase().includes(query.toLowerCase()));
+      if (filteredNotes.length > 0) {
+        setSlashState(null);
+        setWikilinkState({ query, start, selectedIndex: 0 });
+        if (textareaRef.current) {
+          setWikilinkPos(calcMenuPos(textareaRef.current, value, start));
+        }
+      } else {
+        setWikilinkState(null);
+      }
+      return;
+    }
+    setWikilinkState(null);
+
+    // Slash detection
+    const m = before.match(/(?:^|\s)\/(\w*)$/);
+    if (m) {
+      const start = before.lastIndexOf("/");
+      const query = m[1].toLowerCase();
+      const filtered = SLASH_COMMANDS.filter(
+        (c) => c.cmd.startsWith(query) || c.label.toLowerCase().includes(query)
+      );
+      if (filtered.length > 0) {
+        setSlashState({ query, start, selectedIndex: 0 });
+        if (textareaRef.current) {
+          setMenuPos(calcMenuPos(textareaRef.current, value, start));
+        }
+      } else {
+        setSlashState(null);
+      }
+    } else {
+      setSlashState(null);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Wikilink navigation
+    if (wikilinkState !== null) {
+      const filteredWl = notes
+        .filter(n => n.title.toLowerCase().includes(wikilinkState.query.toLowerCase()))
+        .slice(0, 8);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setWikilinkState(s => s ? { ...s, selectedIndex: Math.min(s.selectedIndex + 1, filteredWl.length - 1) } : null);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setWikilinkState(s => s ? { ...s, selectedIndex: Math.max(s.selectedIndex - 1, 0) } : null);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const sel = filteredWl[wikilinkState.selectedIndex];
+        if (sel) insertWikilink(sel.title);
+        return;
+      }
+      if (e.key === "Escape") {
+        setWikilinkState(null);
+        return;
+      }
+    }
+
+    // Slash navigation
+    if (slashState !== null) {
+      const filtered = SLASH_COMMANDS.filter(
+        (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
+      );
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashState((s) => s ? { ...s, selectedIndex: Math.min(s.selectedIndex + 1, filtered.length - 1) } : null);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashState((s) => s ? { ...s, selectedIndex: Math.max(s.selectedIndex - 1, 0) } : null);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const sel = filtered[slashState.selectedIndex];
+        if (sel) insertSlashCommand(sel.cmd);
+        return;
+      }
+      if (e.key === "Escape") {
+        setSlashState(null);
+        return;
+      }
+    }
+
+    if (e.key === "Escape") {
+      setEditingContent(false);
+      onUpdate({ content: localContent });
+    }
+  }
+
+  function renderFloatingMenus() {
+    return (
+      <>
+        {wikilinkState !== null && (
+          <WikilinkMenu
+            notes={notes}
+            query={wikilinkState.query}
+            selectedIndex={wikilinkState.selectedIndex}
+            onSelect={insertWikilink}
+            pos={wikilinkPos}
+            mode={mode}
+          />
+        )}
+        {slashState !== null && wikilinkState === null && (() => {
+          const filtered = SLASH_COMMANDS.filter(
+            (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
+          );
+          return filtered.length > 0 ? (
+            <SlashMenu
+              commands={filtered}
+              selectedIndex={slashState.selectedIndex}
+              onSelect={insertSlashCommand}
+              pos={menuPos}
+              mode={mode}
+            />
+          ) : null;
+        })()}
+      </>
+    );
+  }
 }
