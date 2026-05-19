@@ -15,6 +15,7 @@ export default function Home() {
   const [filter, setFilter] = useState("all");
   const [aiOpen, setAiOpen] = useState(false);
   const [mode, setMode] = useState<"light" | "dark">("light");
+  const [layoutMode, setLayoutMode] = useState<"list" | "grid">("list");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -112,6 +113,8 @@ export default function Home() {
         onSearch={handleSearch}
         searchQuery={searchQuery}
         mode={mode}
+        layoutMode={layoutMode}
+        onToggleLayout={() => setLayoutMode((m) => (m === "list" ? "grid" : "list"))}
       />
 
       <NoteList
@@ -121,6 +124,7 @@ export default function Home() {
         filter={filter}
         setFilter={setFilter}
         mode={mode}
+        layoutMode={layoutMode}
       />
 
       {activeNote ? (

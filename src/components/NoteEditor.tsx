@@ -50,6 +50,101 @@ const TAG_STYLES: Record<string, { bg: string; fg: string; bd: string }> = {
   neutral: { bg: "transparent", fg: "#5C564B", bd: "#E3DECF" },
 };
 
+// ── Slash commands ───────────────────────────────────────────────────
+const SLASH_COMMANDS = [
+  { cmd: "h1",        label: "Cabeçalho 1",        desc: "Título grande",            icon: "note" },
+  { cmd: "h2",        label: "Cabeçalho 2",         desc: "Título médio",             icon: "note" },
+  { cmd: "h3",        label: "Cabeçalho 3",         desc: "Título pequeno",           icon: "note" },
+  { cmd: "code",      label: "Código",              desc: "Bloco de código",          icon: "terminal" },
+  { cmd: "codeblock", label: "Código + linguagem",  desc: "Com seletor de linguagem", icon: "terminal" },
+  { cmd: "bullet",    label: "Lista",               desc: "Lista com marcadores",     icon: "outline" },
+  { cmd: "numbered",  label: "Numerada",            desc: "Lista numerada",           icon: "outline" },
+  { cmd: "quote",     label: "Citação",             desc: "Bloco de citação",         icon: "bookmark" },
+  { cmd: "divider",   label: "Divisor",             desc: "Linha horizontal",         icon: "arrowRight" },
+  { cmd: "link",      label: "Link",                desc: "Inserir hiperlink",        icon: "link" },
+  { cmd: "note",      label: "Link de nota",        desc: "[[link para nota]]",       icon: "note" },
+] as const;
+type SlashCmd = typeof SLASH_COMMANDS[number];
+
+function SlashMenu({
+  commands, selectedIndex, onSelect, pos, mode,
+}: {
+  commands: readonly SlashCmd[];
+  selectedIndex: number;
+  onSelect: (cmd: string) => void;
+  pos: { top: number; left: number };
+  mode: "light" | "dark";
+}) {
+  const c = mode === "dark" ? DARK_TOKENS : LIGHT;
+  if (commands.length === 0) return null;
+  return (
+    <div style={{
+      position: "fixed",
+      top: pos.top,
+      left: pos.left,
+      width: 272,
+      maxHeight: 320,
+      overflowY: "auto",
+      background: mode === "dark" ? "#26241F" : "#FBF8EF",
+      border: `1px solid ${c.rule}`,
+      borderRadius: 10,
+      boxShadow: mode === "dark"
+        ? "0 8px 32px rgba(0,0,0,0.5)"
+        : "0 4px 20px rgba(26,24,20,0.12)",
+      zIndex: 200,
+      overflow: "hidden",
+    }}>
+      <div style={{
+        padding: "5px 12px",
+        borderBottom: `1px solid ${c.rule}`,
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: 9, color: c.inkFaint,
+        letterSpacing: "0.12em", textTransform: "uppercase",
+      }}>
+        inserir bloco
+      </div>
+      {commands.map((item, i) => (
+        <button
+          key={item.cmd}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(item.cmd); }}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 12px",
+            background: i === selectedIndex
+              ? (mode === "dark" ? "#2E2B25" : "#F4F1E8")
+              : "transparent",
+            border: "none",
+            borderBottom: i < commands.length - 1 ? `1px solid ${c.ruleSoft}` : "none",
+            cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <div style={{
+            width: 28, height: 28, flexShrink: 0, borderRadius: 6,
+            background: mode === "dark" ? "#2E2B25" : "#F4F1E8",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <PixelIcon name={item.icon} size={13} color={RED} />
+          </div>
+          <div>
+            <div style={{
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontSize: 13, fontWeight: 500, color: c.ink, lineHeight: 1.3,
+            }}>
+              {item.label}
+            </div>
+            <div style={{
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 10, color: c.inkFaint, marginTop: 1,
+            }}>
+              /{item.cmd}
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Inline parser ────────────────────────────────────────────────────
 function renderInline(text: string, mode: "light" | "dark", onLink: (t: string) => void): React.ReactNode {
   const parts: React.ReactNode[] = [];
@@ -338,12 +433,61 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  type SlashState = { query: string; start: number; selectedIndex: number } | null;
+  const [slashState, setSlashState] = useState<SlashState>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+
   const noteId = note.id;
   useEffect(() => { setLocalContent(note.content); setEditingContent(false); }, [noteId]); // eslint-disable-line
 
   function scheduleSync(content: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => onUpdate({ content }), 500);
+  }
+
+  function calcMenuPos(ta: HTMLTextAreaElement, content: string, slashStart: number) {
+    const textBefore = content.slice(0, slashStart);
+    const lineCount = textBefore.split("\n").length;
+    const lineH = 16 * 1.65; // fontSize * lineHeight
+    const rect = ta.getBoundingClientRect();
+    let top = rect.top + lineCount * lineH - ta.scrollTop + lineH;
+    if (top + 340 > window.innerHeight) top -= 340 + lineH;
+    return { top, left: rect.left };
+  }
+
+  function insertSlashCommand(cmd: string) {
+    setSlashState(null);
+    if (!textareaRef.current || slashState === null) return;
+    const ta = textareaRef.current;
+    const cursor = ta.selectionStart ?? 0;
+    const before = localContent.slice(0, slashState.start);
+    const after = localContent.slice(cursor);
+
+    let insert = "";
+    let delta = 0;
+    switch (cmd) {
+      case "h1":        insert = "# ";              delta = 2; break;
+      case "h2":        insert = "## ";             delta = 3; break;
+      case "h3":        insert = "### ";            delta = 4; break;
+      case "code":      insert = "```\n\n```";      delta = 4; break;
+      case "codeblock": insert = "```bash\n\n```";  delta = 9; break;
+      case "bullet":    insert = "- ";              delta = 2; break;
+      case "numbered":  insert = "1. ";             delta = 3; break;
+      case "quote":     insert = "> ";              delta = 2; break;
+      case "divider":   insert = "\n---\n";         delta = 5; break;
+      case "link":      insert = "[](url)";         delta = 1; break;
+      case "note":      insert = "[[]]";            delta = 2; break;
+      default: return;
+    }
+
+    const next = before + insert + after;
+    setLocalContent(next);
+    scheduleSync(next);
+    requestAnimationFrame(() => {
+      const pos = slashState.start + delta;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
   }
 
   const hasBlocks = note.body && note.body.length > 0;
@@ -498,25 +642,98 @@ export function NoteEditor({ note, notes, mode, onUpdate, onDelete, onLinkNaviga
             {hasBlocks ? (
               <Body blocks={note.body} mode={mode} onLink={onLinkNavigate} />
             ) : editingContent ? (
-              <textarea
-                ref={textareaRef}
-                value={localContent}
-                onChange={(e) => { setLocalContent(e.target.value); scheduleSync(e.target.value); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") { setEditingContent(false); onUpdate({ content: localContent }); }
-                }}
-                onBlur={() => { setEditingContent(false); onUpdate({ content: localContent }); }}
-                style={{
-                  width: "100%", minHeight: "60vh",
-                  background: "transparent", border: "none", outline: "none", resize: "none",
-                  fontFamily: '"Newsreader", Georgia, serif',
-                  fontSize: 16, lineHeight: 1.65, color: c.ink,
-                  caretColor: RED,
-                }}
-                placeholder={"Start writing...\n\nUse [[backlink]] to link notes."}
-                spellCheck={false}
-                autoFocus
-              />
+              <>
+                <textarea
+                  ref={textareaRef}
+                  value={localContent}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const cursor = e.target.selectionStart ?? 0;
+                    setLocalContent(value);
+                    scheduleSync(value);
+                    // Slash detection: / after start-of-line or whitespace
+                    const before = value.slice(0, cursor);
+                    const m = before.match(/(?:^|\s)\/(\w*)$/);
+                    if (m) {
+                      const start = before.lastIndexOf("/");
+                      const query = m[1].toLowerCase();
+                      const filtered = SLASH_COMMANDS.filter(
+                        (c) => c.cmd.startsWith(query) || c.label.toLowerCase().includes(query)
+                      );
+                      if (filtered.length > 0) {
+                        setSlashState({ query, start, selectedIndex: 0 });
+                        if (textareaRef.current) {
+                          setMenuPos(calcMenuPos(textareaRef.current, value, start));
+                        }
+                      } else {
+                        setSlashState(null);
+                      }
+                    } else {
+                      setSlashState(null);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (slashState !== null) {
+                      const filtered = SLASH_COMMANDS.filter(
+                        (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
+                      );
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setSlashState((s) => s ? { ...s, selectedIndex: Math.min(s.selectedIndex + 1, filtered.length - 1) } : null);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setSlashState((s) => s ? { ...s, selectedIndex: Math.max(s.selectedIndex - 1, 0) } : null);
+                        return;
+                      }
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const sel = filtered[slashState.selectedIndex];
+                        if (sel) insertSlashCommand(sel.cmd);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        setSlashState(null);
+                        return;
+                      }
+                    }
+                    if (e.key === "Escape") {
+                      setEditingContent(false);
+                      onUpdate({ content: localContent });
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setSlashState(null), 150);
+                    setEditingContent(false);
+                    onUpdate({ content: localContent });
+                  }}
+                  style={{
+                    width: "100%", minHeight: "60vh",
+                    background: "transparent", border: "none", outline: "none", resize: "none",
+                    fontFamily: '"Newsreader", Georgia, serif',
+                    fontSize: 16, lineHeight: 1.65, color: c.ink,
+                    caretColor: RED,
+                  }}
+                  placeholder={"Comece a escrever…\n\nDigite / para inserir um bloco. Use [[título]] para linkar notas."}
+                  spellCheck={false}
+                  autoFocus
+                />
+                {slashState !== null && (() => {
+                  const filtered = SLASH_COMMANDS.filter(
+                    (c) => c.cmd.startsWith(slashState.query) || c.label.toLowerCase().includes(slashState.query)
+                  );
+                  return filtered.length > 0 ? (
+                    <SlashMenu
+                      commands={filtered}
+                      selectedIndex={slashState.selectedIndex}
+                      onSelect={insertSlashCommand}
+                      pos={menuPos}
+                      mode={mode}
+                    />
+                  ) : null;
+                })()}
+              </>
             ) : (
               <div
                 onClick={() => { setEditingContent(true); requestAnimationFrame(() => textareaRef.current?.focus()); }}

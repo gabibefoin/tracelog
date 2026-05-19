@@ -10,6 +10,7 @@ interface NoteListProps {
   filter: string;
   setFilter: (f: string) => void;
   mode: "light" | "dark";
+  layoutMode: "list" | "grid";
 }
 
 const FILTERS = ["all", "vulns", "recon", "snippets", "refs"] as const;
@@ -85,7 +86,7 @@ function Tag({ variant, label, mode }: { variant: string; label: string; mode: "
   );
 }
 
-export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter, mode }: NoteListProps) {
+export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter, mode, layoutMode }: NoteListProps) {
   const c = mode === "dark" ? DARK : LIGHT;
 
   const filtered = useMemo(() => {
@@ -152,6 +153,69 @@ export function NoteList({ notes, activeNoteId, onSelectNote, filter, setFilter,
           <p style={{ color: c.inkFaint, fontSize: 13, padding: "16px 4px", fontStyle: "italic" }}>
             No notes found
           </p>
+        ) : layoutMode === "grid" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {filtered.map((note) => {
+              const active = note.id === activeNoteId;
+              return (
+                <button
+                  key={note.id}
+                  onClick={() => onSelectNote(note.id)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    background: active ? c.raised : "transparent",
+                    border: `1px solid ${active ? c.rule : "transparent"}`,
+                    borderRadius: 10,
+                    padding: "10px 10px 10px 14px",
+                    position: "relative",
+                    display: "block",
+                    transition: "background .12s, border-color .12s",
+                    fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!active) (e.currentTarget as HTMLButtonElement).style.background = mode === "dark" ? "#2E2B25" : "#F4F1E8";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                  }}
+                >
+                  {/* Left dot rail */}
+                  <div style={{
+                    position: "absolute",
+                    left: 6,
+                    top: 14,
+                    bottom: 14,
+                    width: 3,
+                    borderRadius: 999,
+                    background: dotColor(note.dot, c.inkFaint),
+                  }} />
+
+                  {/* Title */}
+                  <div style={{
+                    fontFamily: '"Newsreader", Georgia, serif',
+                    fontSize: 13,
+                    color: c.ink,
+                    letterSpacing: "-0.01em",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginBottom: 6,
+                  }}>
+                    {note.title || <span style={{ fontStyle: "italic", color: c.inkFaint }}>Untitled</span>}
+                  </div>
+
+                  {/* Tags */}
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {(note.tags as TagEntry[]).slice(0, 2).map(([v, t], j) => (
+                      <Tag key={j} variant={v} label={t} mode={mode} />
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         ) : (
           filtered.map((note) => {
             const active = note.id === activeNoteId;

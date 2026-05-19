@@ -13,6 +13,8 @@ interface SidebarProps {
   onSearch: (query: string) => void;
   searchQuery: string;
   mode: "light" | "dark";
+  layoutMode: "list" | "grid";
+  onToggleLayout: () => void;
 }
 
 const LIGHT = {
@@ -59,7 +61,7 @@ function IconBtn({
 }
 
 export function Sidebar({
-  notes, activeNoteId, onSelectNote, onNewNote, onSearch, searchQuery, mode,
+  notes, activeNoteId, onSelectNote, onNewNote, onSearch, searchQuery, mode, layoutMode, onToggleLayout,
 }: SidebarProps) {
   const c = mode === "dark" ? DARK : LIGHT;
 
@@ -152,10 +154,9 @@ export function Sidebar({
 
       {/* Toolbar */}
       <div style={{ padding: "0 12px 10px", display: "flex", gap: 5, flexShrink: 0 }}>
-        <IconBtn icon="pencil"       mode={mode} title="compose"  onClick={onNewNote} />
-        <IconBtn icon="plus"         mode={mode} title="new note" onClick={onNewNote} />
-        <IconBtn icon="outline"      mode={mode} title="outline" />
-        <IconBtn icon="columns"      mode={mode} title="layout" />
+        <IconBtn icon="plus"          mode={mode} title="new note"         onClick={onNewNote} />
+        <IconBtn icon="outline"       mode={mode} title="gerenciar vaults" onClick={() => alert("Em breve: gerenciar vaults")} />
+        <IconBtn icon="columns"       mode={mode} title="toggle layout"    onClick={onToggleLayout} active={layoutMode === "grid"} />
         <span style={{ flex: 1 }} />
         <IconBtn icon="chevronUpDown" mode={mode} title="sort" />
       </div>

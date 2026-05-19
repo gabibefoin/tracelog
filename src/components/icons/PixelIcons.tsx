@@ -1,8 +1,17 @@
 "use client";
 
-// 14×14 pixel-art icon library.
-// Each icon is a grid of "#" (filled) and "." (empty).
-// Renders crisply via shape-rendering="crispEdges".
+// Icon library — Lucide React (thin-line SVG).
+// Same interface as before: PixelIcon + named exports.
+// Nothing else in the codebase needs to change.
+
+import {
+  FileText, Terminal, Link, GitBranch, Hash, Bug, Shield,
+  Search, Bookmark, Sparkles, Lock, Eye, Folder, Plus,
+  Check, X, ArrowRight, Settings, Pencil, List, Columns2,
+  ChevronsUpDown, HelpCircle, Network, Copy, Send, Code,
+  Globe, Flag, Image, Upload, ChevronRight, Tag, BookOpen,
+} from "lucide-react";
+import type { LucideProps } from "lucide-react";
 
 interface IconProps {
   size?: number;
@@ -10,458 +19,106 @@ interface IconProps {
   className?: string;
 }
 
-const ICONS: Record<string, string[]> = {
-  note: [
-    "..............",
-    "..#########...",
-    "..#.......#...",
-    "..#.......##..",
-    "..#........#..",
-    "..#..####..#..",
-    "..#........#..",
-    "..#..####..#..",
-    "..#........#..",
-    "..#..####..#..",
-    "..#........#..",
-    "..##########..",
-    "..............",
-    "..............",
-  ],
-  terminal: [
-    "..............",
-    ".############.",
-    ".#..........#.",
-    ".#.#........#.",
-    ".#.##.......#.",
-    ".#.###......#.",
-    ".#.##.......#.",
-    ".#.#........#.",
-    ".#....####..#.",
-    ".#..........#.",
-    ".############.",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  link: [
-    "..............",
-    "..####........",
-    ".#....#.......",
-    ".#....#####...",
-    ".#.......#....",
-    "..####...#....",
-    "....#....#....",
-    "....#...####..",
-    "....#..#....#.",
-    "....####....#.",
-    ".......#....#.",
-    ".......#..#...",
-    "........##....",
-    "..............",
-  ],
-  graph: [
-    "..............",
-    "..###.........",
-    "..###..##.....",
-    "...#..####....",
-    "...#...##.....",
-    "...#....#.....",
-    "...#....#.....",
-    "...#....#.....",
-    "...#....####..",
-    "...####....#..",
-    "..####....###.",
-    "..####....###.",
-    "..####....###.",
-    "..............",
-  ],
-  tag: [
-    "..............",
-    "....#...#.....",
-    "....#...#.....",
-    "....#...#.....",
-    ".##########...",
-    "....#...#.....",
-    "....#...#.....",
-    "..##########..",
-    "....#...#.....",
-    "....#...#.....",
-    "....#...#.....",
-    "....#...#.....",
-    "..............",
-    "..............",
-  ],
-  bug: [
-    "..............",
-    "...#......#...",
-    "....#....#....",
-    "....######....",
-    "...########...",
-    "..##########..",
-    "#.##########.#",
-    "#.##########.#",
-    "#.##########.#",
-    "..##########..",
-    "...########...",
-    "....#....#....",
-    "...#......#...",
-    "..............",
-  ],
-  shield: [
-    "..............",
-    "....######....",
-    "...########...",
-    "..##########..",
-    "..##########..",
-    "..##########..",
-    "..##.####.##..",
-    "..##########..",
-    "..##########..",
-    "...########...",
-    "....######....",
-    ".....####.....",
-    "......##......",
-    "..............",
-  ],
-  search: [
-    "..............",
-    "...#####......",
-    "..#.....#.....",
-    ".#..###..#....",
-    ".#.#...#.#....",
-    ".#.#...#.#....",
-    ".#.#...#.#....",
-    ".#..###..#....",
-    "..#.....#.....",
-    "...#####.#....",
-    "........##....",
-    ".........##...",
-    "..........##..",
-    "..............",
-  ],
-  bookmark: [
-    "..............",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...########...",
-    "...##.##.##...",
-    "...#...#...#..",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  sparkle: [
-    "..............",
-    "......##......",
-    "......##......",
-    "...#..##..#...",
-    "...##....##...",
-    "....##..##....",
-    "...##########.",
-    "....##..##....",
-    "...##....##...",
-    "...#..##..#...",
-    "......##......",
-    "......##......",
-    "..............",
-    "..............",
-  ],
-  lock: [
-    "..............",
-    "....######....",
-    "...##....##...",
-    "...##....##...",
-    "...##....##...",
-    "..##########..",
-    "..##########..",
-    "..####..####..",
-    "..####..####..",
-    "..####..####..",
-    "..##########..",
-    "..##########..",
-    "..............",
-    "..............",
-  ],
-  eye: [
-    "..............",
-    "..............",
-    "...########...",
-    "..#........#..",
-    ".#..######..#.",
-    "#..##....##..#",
-    "#..##.##.##..#",
-    "#..##....##..#",
-    ".#..######..#.",
-    "..#........#..",
-    "...########...",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  folder: [
-    "..............",
-    "..............",
-    "..####........",
-    ".######.......",
-    ".###########..",
-    ".###########..",
-    ".###########..",
-    ".###########..",
-    ".###########..",
-    ".###########..",
-    ".###########..",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  plus: [
-    "..............",
-    "..............",
-    "......##......",
-    "......##......",
-    "......##......",
-    "......##......",
-    "..##########..",
-    "..##########..",
-    "......##......",
-    "......##......",
-    "......##......",
-    "......##......",
-    "..............",
-    "..............",
-  ],
-  check: [
-    "..............",
-    "..............",
-    "............##",
-    "...........##.",
-    "..........##..",
-    ".##......##...",
-    "..##....##....",
-    "...##..##.....",
-    "....####......",
-    ".....##.......",
-    "..............",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  x: [
-    "..............",
-    "..............",
-    "..##......##..",
-    "...##....##...",
-    "....##..##....",
-    ".....####.....",
-    "......##......",
-    ".....####.....",
-    "....##..##....",
-    "...##....##...",
-    "..##......##..",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  arrowRight: [
-    "..............",
-    "..............",
-    "..............",
-    "........##....",
-    ".........##...",
-    "..........##..",
-    "..##########..",
-    "..##########..",
-    "..........##..",
-    ".........##...",
-    "........##....",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  cog: [
-    "..............",
-    "......##......",
-    "...#..##..#...",
-    "...##....##...",
-    "....######....",
-    "..###....###..",
-    "##.##....##.##",
-    "##.##....##.##",
-    "..###....###..",
-    "....######....",
-    "...##....##...",
-    "...#..##..#...",
-    "......##......",
-    "..............",
-  ],
-  pencil: [
-    "..............",
-    "..........###.",
-    ".........####.",
-    "........####..",
-    ".......####...",
-    "......####....",
-    ".....####.....",
-    "....####......",
-    "...####.......",
-    "..####........",
-    ".####.........",
-    ".###..........",
-    ".##...........",
-    "..............",
-  ],
-  outline: [
-    "..............",
-    "..............",
-    "..##.######...",
-    "..............",
-    "..##.######...",
-    "..............",
-    "..##.######...",
-    "..............",
-    "..##.######...",
-    "..............",
-    "..##.######...",
-    "..............",
-    "..............",
-    "..............",
-  ],
-  columns: [
-    "..............",
-    "..............",
-    ".###########..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".#####.#####..",
-    ".###########..",
-    "..............",
-    "..............",
-  ],
-  chevronUpDown: [
-    "..............",
-    "......##......",
-    ".....####.....",
-    "....##..##....",
-    "...##....##...",
-    "..............",
-    "..............",
-    "..............",
-    "..............",
-    "...##....##...",
-    "....##..##....",
-    ".....####.....",
-    "......##......",
-    "..............",
-  ],
-  help: [
-    "..............",
-    "....######....",
-    "...##....##...",
-    "..##......##..",
-    "..........##..",
-    ".........##...",
-    "........##....",
-    ".......##.....",
-    "......##......",
-    "......##......",
-    "..............",
-    "......##......",
-    "......##......",
-    "..............",
-  ],
+// Map icon names → Lucide components
+const ICON_MAP: Record<string, React.ComponentType<LucideProps>> = {
+  note:          FileText,
+  terminal:      Terminal,
+  link:          Link,
+  graph:         Network,
+  tag:           Hash,
+  bug:           Bug,
+  shield:        Shield,
+  search:        Search,
+  bookmark:      Bookmark,
+  sparkle:       Sparkles,
+  lock:          Lock,
+  eye:           Eye,
+  folder:        Folder,
+  plus:          Plus,
+  check:         Check,
+  x:             X,
+  arrowRight:    ArrowRight,
+  cog:           Settings,
+  pencil:        Pencil,
+  outline:       List,
+  columns:       Columns2,
+  chevronUpDown: ChevronsUpDown,
+  help:          HelpCircle,
 };
 
 export function PixelIcon({
   name,
-  size = 28,
+  size = 16,
   color = "currentColor",
+  className,
 }: {
   name: string;
   size?: number;
   color?: string;
+  className?: string;
 }) {
-  const rows = ICONS[name];
-  if (!rows) return null;
-  const w = rows[0].length;
-  const h = rows.length;
-  const rects: React.ReactNode[] = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (rows[y][x] === "#") {
-        rects.push(
-          <rect
-            key={`${x},${y}`}
-            x={x}
-            y={y}
-            width={1.02}
-            height={1.02}
-            fill={color}
-          />
-        );
-      }
-    }
-  }
+  const Icon = ICON_MAP[name];
+  if (!Icon) return null;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${w} ${h}`}
-      style={{ display: "block", shapeRendering: "crispEdges" } as React.CSSProperties}
-    >
-      {rects}
-    </svg>
+    <Icon
+      size={size}
+      color={color}
+      strokeWidth={1.5}
+      className={className}
+      style={{ display: "block", flexShrink: 0 }}
+    />
   );
 }
 
 // ── Named exports (used throughout existing codebase) ──────────────────
 
-function makeIcon(name: string) {
-  return function NamedIcon({ size = 16, color = "currentColor" }: IconProps) {
-    return <PixelIcon name={name} size={size} color={color} />;
+function makeIcon(Icon: React.ComponentType<LucideProps>) {
+  return function NamedIcon({ size = 16, color = "currentColor", className }: IconProps) {
+    return (
+      <Icon
+        size={size}
+        color={color}
+        strokeWidth={1.5}
+        className={className}
+        style={{ display: "block", flexShrink: 0 }}
+      />
+    );
   };
 }
 
-export const IconSearch       = makeIcon("search");
-export const IconPlus         = makeIcon("plus");
-export const IconFile         = makeIcon("note");
-export const IconFolder       = makeIcon("folder");
-export const IconCheck        = makeIcon("check");
-export const IconX            = makeIcon("x");
-export const IconSparkle      = makeIcon("sparkle");
-export const IconAI           = makeIcon("sparkle");
-export const IconSettings     = makeIcon("cog");
-export const IconPencil       = makeIcon("pencil");
-export const IconOutline      = makeIcon("outline");
-export const IconColumns      = makeIcon("columns");
-export const IconChevronUpDown = makeIcon("chevronUpDown");
-export const IconHelp         = makeIcon("help");
-export const IconChevronDown  = makeIcon("arrowRight");
-export const IconChevronRight = makeIcon("arrowRight");
-export const IconLink         = makeIcon("link");
-export const IconBug          = makeIcon("bug");
-export const IconTag          = makeIcon("tag");
-export const IconShield       = makeIcon("shield");
-export const IconEye          = makeIcon("eye");
-export const IconTerminal     = makeIcon("terminal");
-export const IconGraph        = makeIcon("graph");
-export const IconBookmark     = makeIcon("bookmark");
-export const IconLock         = makeIcon("lock");
-export const IconArrowRight   = makeIcon("arrowRight");
-export const IconCopy         = makeIcon("note");
-export const IconSend         = makeIcon("arrowRight");
-export const IconCode         = makeIcon("terminal");
-export const IconGlobe        = makeIcon("search");
-export const IconFlag         = makeIcon("bookmark");
-export const IconNetwork      = makeIcon("graph");
-export const IconImage        = makeIcon("note");
-export const IconUpload       = makeIcon("plus");
+export const IconSearch        = makeIcon(Search);
+export const IconPlus          = makeIcon(Plus);
+export const IconFile          = makeIcon(FileText);
+export const IconFolder        = makeIcon(Folder);
+export const IconCheck         = makeIcon(Check);
+export const IconX             = makeIcon(X);
+export const IconSparkle       = makeIcon(Sparkles);
+export const IconAI            = makeIcon(Sparkles);
+export const IconSettings      = makeIcon(Settings);
+export const IconPencil        = makeIcon(Pencil);
+export const IconOutline       = makeIcon(List);
+export const IconColumns       = makeIcon(Columns2);
+export const IconChevronUpDown = makeIcon(ChevronsUpDown);
+export const IconHelp          = makeIcon(HelpCircle);
+export const IconChevronDown   = makeIcon(ChevronsUpDown);
+export const IconChevronRight  = makeIcon(ChevronRight);
+export const IconLink          = makeIcon(Link);
+export const IconBug           = makeIcon(Bug);
+export const IconTag           = makeIcon(Tag);
+export const IconShield        = makeIcon(Shield);
+export const IconEye           = makeIcon(Eye);
+export const IconTerminal      = makeIcon(Terminal);
+export const IconGraph         = makeIcon(Network);
+export const IconBookmark      = makeIcon(Bookmark);
+export const IconLock          = makeIcon(Lock);
+export const IconArrowRight    = makeIcon(ArrowRight);
+export const IconCopy          = makeIcon(Copy);
+export const IconSend          = makeIcon(Send);
+export const IconCode          = makeIcon(Code);
+export const IconGlobe         = makeIcon(Globe);
+export const IconFlag          = makeIcon(Flag);
+export const IconNetwork       = makeIcon(Network);
+export const IconImage         = makeIcon(Image);
+export const IconUpload        = makeIcon(Upload);
+export const IconBookOpen      = makeIcon(BookOpen);
+export const IconGitBranch     = makeIcon(GitBranch);
